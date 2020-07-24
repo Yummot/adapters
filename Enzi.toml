@@ -5,20 +5,8 @@ name = "adapters"
 version = "0.1.0"
 authors = [ "Mot Yu",]
 
-[filesets.src]
-files = []
-
-# Optional targets section, use when you want Enzi to execute some targets.
-# Here is the key-values hint.
-# IMPORTANT: If you use tool ies and uvm, make sure you set ies tool params.use_uvm to true.
-# To see the detail tool params hint, use `enzi --enzi-config-help`
-# IMPORTANT: Filesets field in targets.* is order matter, due some limitations in backend.
-# [targets.sim]
-# default_tool = "<string>"
-# toplevel = "<string>"
-# filesets = "<array<string>>"
-# 
-# [targets.run]
-# default_tool = "<string>"
-# toplevel = "<string>"
-# filesets = "<array<string>>"
+[filesets.rtl]
+files = [
+    "./rtl/apb_adapter.sv",
+    "./rtl/axi4_lite_adapter.sv"
+]
