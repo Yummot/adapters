@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-module axi4_lite_adapter #(
+module axi4_lite_adapter_old #(
   parameter integer                     AXI_ID_WIDTH = 0,
   parameter integer                     AXI_ADDR_WIDTH = 12,
   parameter integer                     AXI_DATA_WIDTH = 32,
@@ -272,4 +272,4 @@ module axi4_lite_adapter #(
     end
   end :ff_rresp
 
-endmodule : axi4_lite_adapter
+endmodule : axi4_lite_adapter_old
