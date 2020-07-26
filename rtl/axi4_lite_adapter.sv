@@ -1,9 +1,15 @@
 `timescale 1ns/1ps
 
 module axi4_lite_adapter #(
-  parameter integer                     AXI_ID_WIDTH = 0,
+  parameter integer                     AXI_ID_WIDTH = 1,
   parameter integer                     AXI_ADDR_WIDTH = 12,
   parameter integer                     AXI_DATA_WIDTH = 32,
+  // Buffer depth, control how many outstanding transactions do we allow)
+  parameter integer                     BUFFER_DEPTH = 2,
+  // Set this block to the security memory space.
+  // If this parameter is asserted, The AXI Lite bus will only have access to
+  // the register when AxPROT[1] is high.
+  parameter bit                         EN_SEC_MODE = 1,
   parameter integer                     AXI_BYTE_COUNT = AXI_DATA_WIDTH / 8
 ) (
   input  logic                          aclk,
@@ -12,7 +18,9 @@ module axi4_lite_adapter #(
   // Write Address channel
   input  logic [AXI_ID_WIDTH-1:0]       awid,
   input  logic [AXI_ADDR_WIDTH-1:0]     awaddr,
+  /* verilator lint_off UNUSED */
   input  logic [2:0]                    awprot,
+  /* verilator lint_on UNUSED */
   input  logic                          awvalid,
   output logic                          awready,
 
@@ -31,7 +39,9 @@ module axi4_lite_adapter #(
   // Read Address channel
   input  logic [AXI_ID_WIDTH-1:0]       arid,
   input  logic [AXI_ADDR_WIDTH-1:0]     araddr,
+  /* verilator lint_off UNUSED */
   input  logic [2:0]                    arprot,
+  /* verilator lint_off UNUSED */
   input  logic                          arvalid,
   output logic                          arready,
 
@@ -59,217 +69,302 @@ module axi4_lite_adapter #(
 );
 
   //----------------------------------------------------------------------------
+  // localparams
+  //----------------------------------------------------------------------------
+
+  // DATA Width for the FIFO parameters
+  localparam W_DATA_WIDTH  = AXI_ID_WIDTH + AXI_ADDR_WIDTH + AXI_DATA_WIDTH + AXI_DATA_WIDTH / 8 + integer'(EN_SEC_MODE);
+  localparam B_DATA_WIDTH  = AXI_ID_WIDTH + 1;
+  localparam AR_DATA_WIDTH = AXI_ID_WIDTH + AXI_ADDR_WIDTH + integer'(EN_SEC_MODE);
+  localparam R_DATA_WIDTH  = AXI_ID_WIDTH + AXI_DATA_WIDTH + 1;
+
+
+  //----------------------------------------------------------------------------
   // Internal signals
   //----------------------------------------------------------------------------
 
-  // The aw channel enable, indicates that the aw channel is ready for
-  // the next transfer.
-  logic aw_en;
-  logic i_bresp_0, i_bresp_1;
-  logic i_rresp_0, i_rresp_1;
+  logic                         reset;
+
+  // Mirror back AxID to xID
+  logic [AXI_ID_WIDTH-1:0]      bid_in;
+  logic [AXI_ID_WIDTH-1:0]      rid_in;
+
+  // waddr & wdata & strb from the FIFO output wFIFO -> RIF W channel
+  logic [AXI_ADDR_WIDTH-1:0]    i_waddr;
+  logic [AXI_DATA_WIDTH-1:0]    i_wdata;
+  logic [AXI_DATA_WIDTH/8-1:0]  i_wstrb;
+  logic                         i_wr_err;
+
+  // raddr from the arFIFO rdata arFIFO -> RIF R channel
+  logic [AXI_ADDR_WIDTH-1:0]    i_raddr;
+  logic [AXI_DATA_WIDTH-1:0]    i_rdata;
+  logic                         i_rd_err;
+
+  // AxPROT security bit from wFIFO/arFIFO
+  logic                         aw_sec;
+  logic                         ar_sec;
+
+  // xRESP[1] bit from bFIFO/rFIFO
+  logic                         wr_err;
+  logic                         rd_err;
+
+
+  // wFIFO signals
+  logic [W_DATA_WIDTH-1:0]      w_fifo_wdata;
+  logic [W_DATA_WIDTH-1:0]      w_fifo_rdata;
+  logic                         w_fifo_wready;
+  logic                         w_fifo_wvalid;
+  logic                         w_fifo_rready;
+  logic                         w_fifo_rvalid;
+
+  // bFIFO signals
+  logic [B_DATA_WIDTH-1:0]      b_fifo_wdata;
+  logic [B_DATA_WIDTH-1:0]      b_fifo_rdata;
+  logic                         b_fifo_wready;
+  logic                         b_fifo_wvalid;
+  logic                         b_fifo_rready;
+  logic                         b_fifo_rvalid;
+
+  // arFIFO signals
+  logic [AR_DATA_WIDTH-1:0]     ar_fifo_wdata;
+  logic [AR_DATA_WIDTH-1:0]     ar_fifo_rdata;
+  logic                         ar_fifo_wready;
+  logic                         ar_fifo_wvalid;
+  logic                         ar_fifo_rready;
+  logic                         ar_fifo_rvalid;
+
+  // rFIFO signals
+  logic [R_DATA_WIDTH-1:0]      r_fifo_wdata;
+  logic [R_DATA_WIDTH-1:0]      r_fifo_rdata;
+  logic                         r_fifo_wready;
+  logic                         r_fifo_wvalid;
+  logic                         r_fifo_rready;
+  logic                         r_fifo_rvalid;
+
+  assign reset = ~aresetn;
 
   //----------------------------------------------------------------------------
-  // The AXI4 Lite AW channel
+  // FIFOs data port connections
   //----------------------------------------------------------------------------
 
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_aw_en
-    if (!aresetn) begin
-      aw_en <= 1'b1;
-    end
-    else if (~awready & awvalid & wvalid & aw_en) begin
-      // find a pending axi wr tranfer
-      aw_en <= 1'b0;
-    end
-    else if (bvalid & bready) begin
-      // the pending axi wr transfer is done.
-      aw_en <= 1'b1;
-    end
-  end : ff_aw_en
+  if (AXI_ID_WIDTH > 0 && EN_SEC_MODE) begin : g_fifo_data_with_id_sec
+    // wFIFO
+    assign w_fifo_wdata = { awid, awaddr, wdata, wstrb, awprot[1] };
+    assign { bid_in, i_waddr, i_wdata, i_wstrb, aw_sec } = w_fifo_rdata;
 
-  // AWREADY
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_awready
-    if (!aresetn) begin
-      awready <= 1'b0;
-    end
-    else if (~awready & awvalid & wvalid & aw_en) begin
-      awready <= 1'b1;
-    end
-    else if (bvalid & bready) begin
-      awready <= 1'b0;
-    end
-    else if (awready) begin
-      awready <= 1'b0;
-    end
-  end : ff_awready
+    // bFIFO
+    assign b_fifo_wdata = { bid_in, i_wr_err };
+    assign { bid, wr_err } = b_fifo_rdata;
 
-  // Register the awaddr to rif_waddr
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_rif_waddr
-    if (!aresetn) begin
-      rif_waddr <= '0;
-    end
-    else if (~awready & awvalid & wvalid & aw_en) begin
-      rif_waddr <= awaddr;
-    end
-  end : ff_rif_waddr
+    // arFIFO
+    assign ar_fifo_wdata = { arid, araddr, arprot[1] };
+    assign { rid_in, i_raddr, ar_sec } = ar_fifo_rdata;
 
-  //----------------------------------------------------------------------------
-  // The AXI4 Lite W channel
-  //----------------------------------------------------------------------------
+    // rFIFO
+    assign r_fifo_wdata = { rid_in, i_rdata, i_rd_err };
+    assign { rid, rdata, rd_err } = r_fifo_rdata;
+  end : g_fifo_data_with_id_sec
+  else if (AXI_ID_WIDTH > 0 && !EN_SEC_MODE) begin : g_fifo_data_with_id
+    // wFIFO
+    assign w_fifo_wdata = {awid, awaddr, wdata, wstrb};
+    assign {bid_in, i_waddr, i_wdata, i_wstrb } = w_fifo_rdata;
 
-  assign rif_wr_req = awready & awvalid & wvalid & wready;
+    // bFIFO
+    assign b_fifo_wdata = { bid_in, i_wr_err };
+    assign { bid, wr_err } = b_fifo_rdata;
 
-  // WREADY
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_wready
-    if (!aresetn) begin
-      wready <= 1'b0;
-    end
-    else if (~awready & awvalid & wvalid & aw_en) begin
-      wready <= 1'b1;
-    end
-    else if (wready) begin
-      wready <= 1'b0;
-    end
-  end : ff_wready
+    // arFIFO
+    assign ar_fifo_wdata = { arid, araddr };
 
-  // RIF WDATA and WSTRB
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_rif_w
-    if (!aresetn) begin
-      rif_wdata <= '0;
-      rif_wstrb <= '0;
-    end
-    else if (~awready & awvalid & wvalid & aw_en) begin
-      rif_wdata <= wdata;
-      rif_wstrb <= wstrb;
-    end
-  end : ff_rif_w
+    assign { rid_in, i_raddr } = ar_fifo_rdata;
 
-  //----------------------------------------------------------------------------
-  // The AXI4 Lite B channel
-  //----------------------------------------------------------------------------
+    // rFIFO
+    assign r_fifo_wdata = { rid_in, i_rdata, i_rd_err };
+    assign { rid, rdata, rd_err } = r_fifo_rdata;
+  end : g_fifo_data_with_id
+  else if (AXI_ID_WIDTH <= 0 && EN_SEC_MODE) begin : g_fifo_data_with_sec
+    // wFIFO
+    assign w_fifo_wdata = { awaddr, wdata, wstrb, awprot[1] };
+    assign { i_waddr, i_wdata, i_wstrb, aw_sec } = w_fifo_rdata;
 
-  // BID
-  if (AXI_ID_WIDTH > 0) begin :  g_bid
-    always_ff @(posedge aclk or negedge aresetn) begin : ff_bid
-      if (!aresetn) begin
-        bid <= '0;
-      end
-      else if (awvalid & awready & ~bvalid) begin
-        bid <= awid;
-      end
-      else if (bvalid & bready) begin
-        bid <= '0;
-      end
-    end : ff_bid
-  end : g_bid
+    // bFIFO
+    assign b_fifo_wdata = i_wr_err;
+    assign wr_err = b_fifo_rdata;
 
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_bvalid
-    if (!aresetn) begin
-      bvalid <= 1'b0;
-    end
-    else if (awvalid & awready & wvalid & wready & ~bvalid) begin
-      bvalid <= 1'b1;
-    end
-    else if (bvalid & bready) begin
-      bvalid <= 1'b0;
-    end
-  end : ff_bvalid
+    // arFIFO
+    assign ar_fifo_wdata = { araddr, arprot[1] };
+    assign { i_raddr, ar_sec } = ar_fifo_rdata;
 
-  // BRESP
-  assign bresp = {i_bresp_1, i_bresp_0};
-  assign i_bresp_0 = 1'b0;
+    // rFIFO
+    assign r_fifo_wdata = { i_rdata, i_rd_err };
+    assign { rdata, rd_err } = r_fifo_rdata;
+  end : g_fifo_data_with_sec
+  else begin : g_fifo_data
+    // wFIFO
+    assign w_fifo_wdata = { awaddr, wdata, wstrb };
+    assign { i_waddr, i_wdata, i_wstrb } = w_fifo_rdata;
 
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_bresp
-    if (!aresetn) begin
-      i_bresp_1 <= 1'b0;
-    end
-    else if (awvalid & awready & wvalid & wready & ~bvalid) begin
-      i_bresp_1 <= ~rif_wvalid;
-    end
-    else if (bvalid & bready) begin
-      i_bresp_1 <= 1'b0;
-    end
-  end : ff_bresp
+    // bFIFO
+    assign b_fifo_wdata = i_wr_err;
+    assign wr_err = b_fifo_rdata;
+
+    // arFIFO
+    assign ar_fifo_wdata = araddr;
+    assign i_raddr = ar_fifo_rdata;
+
+    // rFIFO
+    assign r_fifo_wdata = { i_rdata, i_rd_err };
+    assign { rdata, rd_err } = r_fifo_rdata;
+  end : g_fifo_data
 
   //----------------------------------------------------------------------------
-  // The AXI4 Lite AR and R channels
+  // RIF signals
   //----------------------------------------------------------------------------
-  assign rif_rd_req = arvalid & arready;
 
-  // RID
-  if (AXI_ID_WIDTH > 0) begin : g_rid
-    always_ff @(posedge aclk or negedge aresetn) begin : ff_rid
-      if (!aresetn) begin
-        rid <= '0;
-      end
-      else if (arvalid & ~arready) begin
-        rid <= arid;
-      end
-      else if (rvalid && rready) begin
-        rid <= '0;
-      end
-    end : ff_rid
-  end : g_rid
+  // RIF write channel
+  assign rif_waddr  = i_waddr;
+  assign rif_wdata  = i_wdata;
+  assign rif_wstrb  = (EN_SEC_MODE & aw_sec) ? i_wstrb : '0;
+  assign i_wr_err   = (EN_SEC_MODE) ? (~aw_sec & ~rif_wvalid) : ~rif_wvalid;
+  assign rif_wr_req = w_fifo_rvalid  & b_fifo_wready;
 
-    // Register ARADDR
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_rif_raddr
-    if (!aresetn) begin
-      rif_raddr <= '0;
-    end
-    else if (arvalid & ~arready) begin
-      rif_raddr <= araddr;
-    end
-  end :ff_rif_raddr
+  assign rif_raddr  = i_raddr;
+  assign i_rdata    = (EN_SEC_MODE & ar_sec) ? rif_rdata : '0;
+  assign i_rd_err   = (EN_SEC_MODE) ? (~ar_sec & ~rif_rvalid) : ~rif_rvalid;
+  assign rif_rd_req = ar_fifo_rvalid & r_fifo_wready;
 
-  // ARREADY
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_arready
-    if (!aresetn) begin
-      arready <= 1'b0;
-    end
-    else if (arvalid & ~arready) begin
-      arready <= 1'b1;
-    end
-    else if (arready) begin
-      arready <= 1'b0;
-    end
-  end : ff_arready
 
-  // RDATA
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_rdata
-    if (!aresetn) begin
-      rdata <= '0;
-    end
-    else if (arvalid & arready & ~rvalid) begin
-      rdata <= rif_rdata;
-    end
-  end :ff_rdata
+  //----------------------------------------------------------------------------
+  // AXI AW & W channel <-> wFIFO
+  // Combine AW and W channel
+  //----------------------------------------------------------------------------
 
-  // RVALID
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_rvalid
-    if (!aresetn) begin
-      rvalid <= 1'b0;
-    end
-    else if (arvalid & arready & ~rvalid) begin
-      rvalid <= 1'b1;
-    end
-    else if (rvalid & rready) begin
-      rvalid <= 1'b0;
-    end
-  end : ff_rvalid
+  assign awready = w_fifo_wvalid;
+  assign wready = w_fifo_wready;
+  assign w_fifo_rready = rif_wr_req;
+  assign w_fifo_wvalid = awvalid & wvalid & ~w_fifo_wready;
 
-  // RRESP, only uses OKAY (2'b00) and SLVERR (2'b10)
-  assign rresp = {i_rresp_1, i_rresp_0};
-  assign i_rresp_0 = 1'b0;
+  sync_fifo #(
+    .DATA_WIDTH     (W_DATA_WIDTH),
+    .DEPTH          (BUFFER_DEPTH)
+  ) u_w_fifo(
+    .clk            (aclk),
+    .reset          (reset),
 
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_rresp
-    if (!aresetn) begin
-      i_rresp_1 <= '0;
-    end
-    else if (arvalid & arready & ~rvalid) begin
-      i_rresp_1 <= ~rif_rvalid;
-    end
-    else if (rvalid & rready) begin
-      i_rresp_1 <= '0;
-    end
-  end :ff_rresp
+    .flush          (1'b0),
+
+    .wdata          (w_fifo_wdata),
+    .wvalid         (w_fifo_wvalid),
+    .wready         (w_fifo_wready),
+
+    .rdata          (w_fifo_rdata),
+    .rvalid         (w_fifo_rvalid),
+    .rready         (w_fifo_rready),
+
+    /* verilator lint_off PINCONNECTEMPTY */
+    .data_count     (),
+    .empty          (),
+    .full           ()
+    /* verilator lint_on PINCONNECTEMPTY */
+  );
+
+  //----------------------------------------------------------------------------
+  // AXI B channel <-> bFIFO
+  //----------------------------------------------------------------------------
+
+  assign bresp = {wr_err, 1'b0};
+  assign bvalid = b_fifo_rvalid;
+  assign b_fifo_rready = bvalid & bready;
+  assign b_fifo_wvalid = rif_wr_req;
+
+  sync_fifo #(
+    .DATA_WIDTH     (B_DATA_WIDTH),
+    .DEPTH          (BUFFER_DEPTH)
+  ) u_b_fifo(
+    .clk            (aclk),
+    .reset          (reset),
+
+    .flush          (1'b0),
+
+    .wdata          (b_fifo_wdata),
+    .wvalid         (b_fifo_wvalid),
+    .wready         (b_fifo_wready),
+
+    .rdata          (b_fifo_rdata),
+    .rvalid         (b_fifo_rvalid),
+    .rready         (b_fifo_rready),
+
+    /* verilator lint_off PINCONNECTEMPTY */
+    .data_count     (),
+    .empty          (),
+    .full           ()
+    /* verilator lint_on PINCONNECTEMPTY */
+  );
+
+  //----------------------------------------------------------------------------
+  // AXI AR channel <-> arFIFO
+  //----------------------------------------------------------------------------
+
+  assign arready = ar_fifo_wready;
+  assign ar_fifo_rready = rif_rd_req;
+  assign ar_fifo_wvalid = arvalid & arready;
+
+  sync_fifo #(
+    .DATA_WIDTH     (AR_DATA_WIDTH),
+    .DEPTH          (BUFFER_DEPTH)
+  ) u_ar_fifo(
+    .clk            (aclk),
+    .reset          (reset),
+
+    .flush          (1'b0),
+
+    .wdata          (ar_fifo_wdata),
+    .wvalid         (ar_fifo_wvalid),
+    .wready         (ar_fifo_wready),
+
+    .rdata          (ar_fifo_rdata),
+    .rvalid         (ar_fifo_rvalid),
+    .rready         (ar_fifo_rready),
+
+    /* verilator lint_off PINCONNECTEMPTY */
+    .data_count     (),
+    .empty          (),
+    .full           ()
+    /* verilator lint_on PINCONNECTEMPTY */
+  );
+
+  //----------------------------------------------------------------------------
+  // AXI R channel <-> rFIFO
+  //----------------------------------------------------------------------------
+
+  assign rresp = {rd_err, 1'b1};
+  assign rvalid = r_fifo_rvalid;
+  assign r_fifo_rready = rvalid & rready;
+  assign r_fifo_wvalid = rif_rd_req;
+
+
+  sync_fifo #(
+    .DATA_WIDTH     (R_DATA_WIDTH),
+    .DEPTH          (BUFFER_DEPTH)
+  ) u_r_fifo(
+    .clk            (aclk),
+    .reset          (reset),
+
+    .flush          (1'b0),
+
+    .wdata          (r_fifo_wdata),
+    .wvalid         (r_fifo_wvalid),
+    .wready         (r_fifo_wready),
+
+    .rdata          (r_fifo_rdata),
+    .rvalid         (r_fifo_rvalid),
+    .rready         (r_fifo_rready),
+
+    /* verilator lint_off PINCONNECTEMPTY */
+    .data_count     (),
+    .empty          (),
+    .full           ()
+    /* verilator lint_on PINCONNECTEMPTY */
+  );
 
 endmodule : axi4_lite_adapter

@@ -1,2 +1,3 @@
 # ignore Enzi build directory
 build/
+Enzi.lock
