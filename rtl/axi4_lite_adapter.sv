@@ -12,7 +12,7 @@ module axi4_lite_adapter #(
   parameter bit                         EN_SEC_MODE = 1,
   /// Whether the AXI-Lite W channel should be decoupled with a register. This
   /// can help break long paths at the expense of registers.
-  parameter bit                         DECOUPLE_W = 0,
+  parameter bit                         DECOUPLE_W = 1,
   parameter integer                     AXI_BYTE_COUNT = AXI_DATA_WIDTH / 8
 ) (
   input  logic                          aclk,
