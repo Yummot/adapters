@@ -83,9 +83,11 @@ module axi4_lite_adapter #(
 
   // If the BUFFER_DEPTH of an axi4_lite_adapter instance doesn't meet the condition,
   // it will fail at optimization/elaboration.
+  // pragma translate_off
   if (BUFFER_DEPTH < 1) begin
     $fatal(1, "AXI4 Lite Adapter expected BUFFER_DEPTH > 0, but got BUFFER_DEPTH = %d", BUFFER_DEPTH);
   end
+  // pragma translate_on
 
 
   //----------------------------------------------------------------------------
