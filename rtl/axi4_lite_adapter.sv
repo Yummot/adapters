@@ -10,6 +10,9 @@ module axi4_lite_adapter #(
   // If this parameter is asserted, The AXI Lite bus will only have access to
   // the register when AxPROT[1] is high.
   parameter bit                         EN_SEC_MODE = 1,
+  /// Whether the AXI-Lite W channel should be decoupled with a register. This
+  /// can help break long paths at the expense of registers.
+  parameter bit                         DECOUPLE_W = 0,
   parameter integer                     AXI_BYTE_COUNT = AXI_DATA_WIDTH / 8
 ) (
   input  logic                          aclk,
@@ -265,7 +268,7 @@ module axi4_lite_adapter #(
   assign w_fifo_wvalid = awvalid & wvalid & w_fifo_wready;
 
   sync_fifo #(
-    .FALL_THROUGH   (1'b1),
+    .FALL_THROUGH   (~DECOUPLE_W),
     .DATA_WIDTH     (W_DATA_WIDTH),
     .DEPTH          (BUFFER_DEPTH)
   ) u_w_fifo(
@@ -299,7 +302,7 @@ module axi4_lite_adapter #(
   assign b_fifo_wvalid = rif_wr_req;
 
   sync_fifo #(
-    .FALL_THROUGH   (1'b1),
+    .FALL_THROUGH   (~DECOUPLE_W),
     .DATA_WIDTH     (B_DATA_WIDTH),
     .DEPTH          (BUFFER_DEPTH)
   ) u_b_fifo(
