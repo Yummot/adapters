@@ -78,6 +78,12 @@ module axi4_lite_adapter #(
   localparam AR_DATA_WIDTH = AXI_ID_WIDTH + AXI_ADDR_WIDTH + integer'(EN_SEC_MODE);
   localparam R_DATA_WIDTH  = AXI_ID_WIDTH + AXI_DATA_WIDTH + 1;
 
+  // If the BUFFER_DEPTH of an axi4_lite_adapter instance doesn't meet the condition,
+  // it will fail at optimization/elaboration.
+  if (BUFFER_DEPTH < 1) begin
+    $fatal(1, "AXI4 Lite Adapter expected BUFFER_DEPTH > 0, but got BUFFER_DEPTH = %d", BUFFER_DEPTH);
+  end
+
 
   //----------------------------------------------------------------------------
   // Internal signals
@@ -223,15 +229,29 @@ module axi4_lite_adapter #(
 
   // RIF write channel
   assign rif_waddr  = i_waddr;
-  assign rif_wdata  = i_wdata;
-  assign rif_wstrb  = (EN_SEC_MODE & aw_sec) ? i_wstrb : '0;
   assign i_wr_err   = (EN_SEC_MODE) ? (~aw_sec & ~rif_wvalid) : ~rif_wvalid;
   assign rif_wr_req = w_fifo_rvalid  & b_fifo_wready;
 
+  if (EN_SEC_MODE) begin : g_sec_wr
+    assign rif_wdata = aw_sec ? i_wdata : '0;
+    assign rif_wstrb = aw_sec ? i_wstrb : '0;
+  end : g_sec_wr
+  else begin : g_no_sec_wr
+    assign rif_wdata = i_wdata;
+    assign rif_wstrb = i_wstrb;
+  end : g_no_sec_wr
+
+  // RIF read channel
   assign rif_raddr  = i_raddr;
-  assign i_rdata    = (EN_SEC_MODE & ar_sec) ? rif_rdata : '0;
   assign i_rd_err   = (EN_SEC_MODE) ? (~ar_sec & ~rif_rvalid) : ~rif_rvalid;
   assign rif_rd_req = ar_fifo_rvalid & r_fifo_wready;
+
+  if (EN_SEC_MODE) begin : g_sec_rd
+    assign i_rdata = ar_sec ? rif_rdata : '0;
+  end : g_sec_rd
+  else begin : g_no_sec_rd
+    assign i_rdata = rif_rdata;
+  end : g_no_sec_rd
 
 
   //----------------------------------------------------------------------------
@@ -242,9 +262,10 @@ module axi4_lite_adapter #(
   assign awready = w_fifo_wvalid;
   assign wready = w_fifo_wready;
   assign w_fifo_rready = rif_wr_req;
-  assign w_fifo_wvalid = awvalid & wvalid & ~w_fifo_wready;
+  assign w_fifo_wvalid = awvalid & wvalid & w_fifo_wready;
 
   sync_fifo #(
+    .FALL_THROUGH   (1'b1),
     .DATA_WIDTH     (W_DATA_WIDTH),
     .DEPTH          (BUFFER_DEPTH)
   ) u_w_fifo(
@@ -278,6 +299,7 @@ module axi4_lite_adapter #(
   assign b_fifo_wvalid = rif_wr_req;
 
   sync_fifo #(
+    .FALL_THROUGH   (1'b1),
     .DATA_WIDTH     (B_DATA_WIDTH),
     .DEPTH          (BUFFER_DEPTH)
   ) u_b_fifo(
