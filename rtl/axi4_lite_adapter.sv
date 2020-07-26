@@ -9,7 +9,7 @@ module axi4_lite_adapter #(
   // Set this block to the security memory space.
   // If this parameter is asserted, The AXI Lite bus will only have access to
   // the register when AxPROT[1] is high.
-  parameter bit                         EN_SEC_MODE = 1,
+  parameter bit                         EN_SEC_MODE = 0,
   /// Whether the AXI-Lite W channel should be decoupled with a register. This
   /// can help break long paths at the expense of registers.
   parameter bit                         DECOUPLE_W = 1,
