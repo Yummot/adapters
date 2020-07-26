@@ -296,7 +296,8 @@ module axi4_lite_adapter #(
   // AXI B channel <-> bFIFO
   //----------------------------------------------------------------------------
 
-  assign bresp = {wr_err, 1'b0};
+  assign bresp[1] = b_fifo_rready ? wr_err : 1'b0;
+  assign bresp[0] = 1'b0;
   assign bvalid = b_fifo_rvalid;
   assign b_fifo_rready = bvalid & bready;
   assign b_fifo_wvalid = rif_wr_req;
@@ -362,7 +363,8 @@ module axi4_lite_adapter #(
   // AXI R channel <-> rFIFO
   //----------------------------------------------------------------------------
 
-  assign rresp = {rd_err, 1'b1};
+  assign rresp[1] = r_fifo_rready ? rd_err : 1'b0;
+  assign rresp[0] = 1'b0;
   assign rvalid = r_fifo_rvalid;
   assign r_fifo_rready = rvalid & rready;
   assign r_fifo_wvalid = rif_rd_req;
