@@ -8,6 +8,7 @@ authors = [ "Mot Yu",]
 [filesets.rtl]
 files = [
     "./rtl/apb_adapter.sv",
+    "./rtl/apb_adapter.sv",
     "./rtl/axi4_lite_adapter_old.sv",
     "./rtl/axi4_lite_adapter.sv"
 ]
