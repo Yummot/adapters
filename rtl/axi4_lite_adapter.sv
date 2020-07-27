@@ -10,8 +10,11 @@ module axi4_lite_adapter #(
   // If this parameter is asserted, The AXI Lite bus will only have access to
   // the register when AxPROT[1] is high.
   parameter bit                         EN_SEC_MODE = 0,
-  /// Whether the AXI-Lite W channel should be decoupled with a register. This
-  /// can help break long paths at the expense of registers.
+  // Slience failure when trying to access the register file with AxPROT[1]=0,
+  // and EN_SEC_MODE = 1.
+  parameter bit                         NO_SEC_FAIL = 0,
+  // Whether the AXI-Lite W channel should be decoupled with a register. This
+  // can help break long paths at the expense of registers.
   parameter bit                         DECOUPLE_W = 1,
   parameter integer                     AXI_BYTE_COUNT = AXI_DATA_WIDTH / 8
 ) (
@@ -234,7 +237,7 @@ module axi4_lite_adapter #(
 
   // RIF write channel
   assign rif_waddr  = i_waddr;
-  assign i_wr_err   = (EN_SEC_MODE) ? (~aw_sec | ~rif_wvalid) : ~rif_wvalid;
+  assign i_wr_err   = (EN_SEC_MODE && !NO_SEC_FAIL) ? (~aw_sec | ~rif_wvalid) : ~rif_wvalid;
   assign rif_wr_req = w_fifo_rvalid  & b_fifo_wready;
 
   if (EN_SEC_MODE) begin : g_sec_wr
@@ -248,7 +251,7 @@ module axi4_lite_adapter #(
 
   // RIF read channel
   assign rif_raddr  = i_raddr;
-  assign i_rd_err   = (EN_SEC_MODE) ? (~ar_sec | ~rif_rvalid) : ~rif_rvalid;
+  assign i_rd_err   = (EN_SEC_MODE && !NO_SEC_FAIL) ? (~ar_sec | ~rif_rvalid) : ~rif_rvalid;
   assign rif_rd_req = ar_fifo_rvalid & r_fifo_wready;
 
   if (EN_SEC_MODE) begin : g_sec_rd
