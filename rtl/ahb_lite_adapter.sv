@@ -204,7 +204,7 @@ module ahb_lite_adapter #(
     if (!HRESETn) begin
       HREADYOUT <= 1'b1;
     end
-    else if (HSEL && ahb_xseq && !HWRITE) begin
+    else if (HSEL && ahb_xseq) begin
       HREADYOUT <= 1'b0;
     end
     else if (i_err) begin
