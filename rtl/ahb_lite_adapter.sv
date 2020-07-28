@@ -64,9 +64,13 @@ module ahb_lite_adapter #(
   //----------------------------------------------------------------------------
 
   logic [1:0]                           i_hresp;
+  logic [2:0]                           i_size;
+  logic [ADDR_WIDTH-1:0]                i_addr;
   logic [STRB_WIDTH-1:0]                i_strb;
   logic [DATA_WIDTH-1:0]                i_wdata;
   logic [DATA_WIDTH-1:0]                i_rdata;
+  logic                                 i_write;
+  logic                                 i_nonsec;
   logic                                 i_req;
   logic                                 i_err;
   logic                                 ahb_xseq;
@@ -78,9 +82,8 @@ module ahb_lite_adapter #(
   // Indicates an AHB valid address phase to this device.
   assign ahb_valid = HSEL & HREADYIN;
 
-  assign i_req = ahb_valid & ahb_xseq;
   // There is an error from RIF
-  assign i_err = i_req & !rif_addr_valid;
+  assign i_err = (rif_rd_req | rif_wr_req) & !rif_addr_valid;
 
   assign HRESP = i_hresp[1];
 
@@ -89,10 +92,10 @@ module ahb_lite_adapter #(
   //----------------------------------------------------------------------------
 
   // Internal STRB logic
-  always_comb begin : comb_wstrb
+  always_comb begin : comb_strb
     // Note that HSIZE will not greater than DATA_WIDTH.
     i_strb = '0;
-    case (HSIZE)
+    case (i_size)
       3'b000: i_strb = STRB_MAP[0][STRB_WIDTH-1:0]; // Byte
       3'b001: i_strb = STRB_MAP[1][STRB_WIDTH-1:0]; // Halfword
       3'b010: i_strb = STRB_MAP[2][STRB_WIDTH-1:0]; // Word
@@ -102,12 +105,12 @@ module ahb_lite_adapter #(
       3'b110: i_strb = STRB_MAP[6][STRB_WIDTH-1:0]; // 512-bits width
       3'b111: i_strb = STRB_MAP[7][STRB_WIDTH-1:0]; // 1024-bits width
     endcase
-  end : comb_wstrb
+  end : comb_strb
 
   // i_wdata mask
   if (SEC_TRANS) begin : g_sec_wdata
     for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_wdata
-      assign i_wdata[i+:8] = (i_strb[i/8] & ~HNONSEC) ? HWDATA[i+:8] : '0;
+      assign i_wdata[i+:8] = (i_strb[i/8] & ~i_nonsec) ? HWDATA[i+:8] : '0;
     end : g_i_wdata;
   end : g_sec_wdata
   else begin : g_non_sec_wdata
@@ -119,7 +122,7 @@ module ahb_lite_adapter #(
   // i_rdata mask
   if (SEC_TRANS) begin : g_sec_rdata
     for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_rdata
-      assign i_rdata[i+:8] = (i_strb[i/8] & ~HNONSEC) ? rif_rdata[i+:8] : '0;
+      assign i_rdata[i+:8] = (i_strb[i/8] & ~i_nonsec) ? rif_rdata[i+:8] : '0;
     end : g_i_rdata;
   end : g_sec_rdata
   else begin : g_non_sec_rdata
@@ -133,9 +136,9 @@ module ahb_lite_adapter #(
   //----------------------------------------------------------------------------
   // RIF signals connections
   //----------------------------------------------------------------------------
-  assign rif_addr   = HADDR;
-  assign rif_wr_req = i_req & HWRITE;
-  assign rif_rd_req = i_req & ~HWRITE;
+  assign rif_addr   = i_addr;
+  assign rif_wr_req = i_req &  i_write;
+  assign rif_rd_req = i_req & ~i_write;
   assign rif_wstrb  = i_strb;
   assign rif_wdata  = i_wdata;
 
@@ -153,6 +156,46 @@ module ahb_lite_adapter #(
     end
   end : ff_hrdata
 
+  // Latch HADDR and HSIZE
+  always_ff @(posedge HCLK or negedge HRESETn) begin : ff_addr_size
+    if (!HRESETn) begin
+      i_addr  <= '0;
+      i_size  <= '0;
+      i_nonsec <= '0;
+    end
+    else if (ahb_valid && ahb_xseq) begin
+      i_addr  <= HADDR;
+      i_size  <= HSIZE;
+      i_nonsec <= HNONSEC;
+    end
+  end : ff_addr_size
+
+  // Latch HWRITE
+  always_ff @(posedge HCLK or negedge HRESETn) begin : ff_wr
+    if (!HRESETn) begin
+      i_write <= 1'b0;
+    end
+    else if (ahb_valid && ahb_xseq) begin
+      i_write <= HWRITE;
+    end
+    else if (!HSEL && i_write) begin
+      i_write <= 1'b0;
+    end
+  end : ff_wr
+
+  // Generate internal req
+  always_ff @(posedge HCLK or negedge HRESETn) begin : ff_req
+    if (!HRESETn) begin
+      i_req <= 1'b0;
+    end
+    else if (ahb_valid && (i_req ^ ahb_xseq)) begin
+      i_req <= ahb_xseq;
+    end
+    else if (!HSEL && i_req) begin
+      i_req <= 1'b0;
+    end
+  end : ff_req
+
   //----------------------------------------------------------------------------
   // Device HREADYOUT and HRESP
   //----------------------------------------------------------------------------
@@ -160,6 +203,9 @@ module ahb_lite_adapter #(
   always_ff @(posedge HCLK or negedge HRESETn) begin : ff_hready_out
     if (!HRESETn) begin
       HREADYOUT <= 1'b1;
+    end
+    else if (HSEL && ahb_xseq && !HWRITE) begin
+      HREADYOUT <= 1'b0;
     end
     else if (i_err) begin
       HREADYOUT <= 1'b0;
