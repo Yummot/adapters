@@ -148,7 +148,7 @@ module ahb_lite_adapter #(
     end : g_i_rdata;
   end : g_non_sec_rdata
 
-  assign HRDATA = i_rdata;
+  // assign HRDATA = i_rdata;
 
   //----------------------------------------------------------------------------
   // RIF signals connections
