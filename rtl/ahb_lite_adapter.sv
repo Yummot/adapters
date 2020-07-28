@@ -155,7 +155,7 @@ module ahb_lite_adapter #(
   //----------------------------------------------------------------------------
   assign rif_addr   = (HWRITE) ? i_addr : HADDR;
   assign rif_wr_req = i_req &  i_write;
-  assign rif_rd_req = ahb_valid & ahb_xseq & ~i_write;
+  assign rif_rd_req = ahb_valid & ahb_xseq & ~HWRITE;
   assign rif_wstrb  = i_wstrb;
   assign rif_wdata  = i_wdata;
 
