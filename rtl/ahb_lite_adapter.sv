@@ -67,6 +67,7 @@ module ahb_lite_adapter #(
   logic [2:0]                           i_size;
   logic [ADDR_WIDTH-1:0]                i_addr;
   logic [STRB_WIDTH-1:0]                i_wstrb;
+  logic [STRB_WIDTH-1:0]                i_rstrb;
   logic [DATA_WIDTH-1:0]                i_wdata;
   logic [DATA_WIDTH-1:0]                i_rdata;
   logic [DATA_WIDTH-1:0]                i_rdata;
