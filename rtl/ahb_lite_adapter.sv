@@ -28,9 +28,10 @@ module ahb_lite_adapter #(
   output logic                          HREADYOUT,
 
   output logic [ADDR_WIDTH-1:0]         rif_addr,
-  input  logic                          rif_addr_valid,
   output logic                          rif_wr_req,
+  input  logic                          rif_wvalid,
   output logic                          rif_rd_req,
+  input  logic                          rif_rvalid,
   output logic [BYTE_COUNT-1:0]         rif_wstrb,
   output logic [DATA_WIDTH-1:0]         rif_wdata,
   input  logic [DATA_WIDTH-1:0]         rif_rdata
@@ -83,7 +84,7 @@ module ahb_lite_adapter #(
   assign ahb_valid = HSEL & HREADYIN;
 
   // There is an error from RIF
-  assign i_err = (rif_rd_req | rif_wr_req) & !rif_addr_valid;
+  assign i_err = (rif_wr_req ? ~rif_wvalid : '0) | (rif_rd_req ? ~rif_rvalid : '0);
 
   assign HRESP = i_hresp[1];
 

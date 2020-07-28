@@ -21,9 +21,10 @@ module apb_adapter #(
   output logic                          pslverr,
 
   output logic [ADDR_WIDTH-1:0]         rif_addr,
-  input  logic                          rif_addr_valid,
   output logic                          rif_wr_req,
+  input  logic                          rif_wvalid,
   output logic                          rif_rd_req,
+  input  logic                          rif_rvalid,
   output logic [BYTE_COUNT-1:0]         rif_wstrb,
   output logic [DATA_WIDTH-1:0]         rif_wdata,
   input  logic [DATA_WIDTH-1:0]         rif_rdata
@@ -54,8 +55,11 @@ module apb_adapter #(
       else if (pslverr) begin
         pslverr <= 1'b0;
       end
-      else if (psel & ~penable) begin
-        pslverr <= ~rif_addr_valid;
+      else if (rif_wr_req) begin
+        pslverr <= ~rif_wvalid;
+      end
+      else if (rif_rd_req) begin
+        pslverr <= ~rif_rvalid;
       end
     end : ff_slverr
 
