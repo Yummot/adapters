@@ -70,18 +70,14 @@ module ahb_lite_adapter #(
   logic [DATA_WIDTH-1:0]                i_wdata;
   logic [DATA_WIDTH-1:0]                i_rdata;
   logic                                 i_write;
+  logic                                 i_nonsec;
   logic                                 i_req;
   logic                                 i_err;
   logic                                 ahb_xseq;
   logic                                 ahb_valid;
 
   // If AHB transfer, HTRANS[1] = 1'b1 , which is NONSEQ (2'b10) and SEQ (2'b11)
-  if (SEC_TRANS) begin : g_sec_xseq
-    assign ahb_xseq = HTRANS[1] & HNONSEC;
-  end : g_sec_xseq
-  else begin : g_non_sec_xseq
-    assign ahb_xseq = HTRANS[1];
-  end : g_non_sec_xseq
+  assign ahb_xseq = HTRANS[1];
 
   // Indicates an AHB valid address phase to this device.
   assign ahb_valid = HSEL & HREADYIN;
@@ -112,14 +108,28 @@ module ahb_lite_adapter #(
   end : comb_strb
 
   // i_wdata mask
-  for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_wdata
-    assign i_wdata[i+:8] = i_strb[i/8] ? HWDATA[i+:8] : '0;
-  end : g_i_wdata;
+  if (SEC_TRANS) begin : g_sec_wdata
+    for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_wdata
+      assign i_wdata[i+:8] = (i_strb[i/8] & ~i_nonsec) ? HWDATA[i+:8] : '0;
+    end : g_i_wdata;
+  end : g_sec_wdata
+  else begin : g_non_sec_wdata
+    for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_wdata
+      assign i_wdata[i+:8] = i_strb[i/8] ? HWDATA[i+:8] : '0;
+    end : g_i_wdata;
+  end : g_non_sec_wdata
 
   // i_rdata mask
-  for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_rdata
-    assign i_rdata[i+:8] = i_strb[i/8] ? rif_rdata[i+:8] : '0;
-  end : g_i_rdata;
+  if (SEC_TRANS) begin : g_sec_rdata
+    for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_rdata
+      assign i_rdata[i+:8] = (i_strb[i/8] & ~i_nonsec) ? rif_rdata[i+:8] : '0;
+    end : g_i_rdata;
+  end : g_sec_rdata
+  else begin : g_non_sec_rdata
+    for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_rdata
+      assign i_rdata[i+:8] = i_strb[i/8] ? rif_rdata[i+:8] : '0;
+    end : g_i_rdata;
+  end : g_non_sec_rdata
 
   assign HRDATA = i_rdata;
 
@@ -141,10 +151,12 @@ module ahb_lite_adapter #(
     if (!HRESETn) begin
       i_addr  <= '0;
       i_size  <= '0;
+      i_nonsec <= '0;
     end
     else if (ahb_valid && ahb_xseq) begin
       i_addr  <= HADDR;
       i_size  <= HSIZE;
+      i_nonsec <= HNONSEC;
     end
   end : ff_addr_size
 
