@@ -2,7 +2,7 @@ enzi_version = "0.3"
 
 [package]
 name = "adapters"
-version = "0.2.2"
+version = "0.2.3"
 authors = [ "Mot Yu",]
 
 [filesets.rtl]

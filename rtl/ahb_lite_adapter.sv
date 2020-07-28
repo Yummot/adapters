@@ -64,14 +64,9 @@ module ahb_lite_adapter #(
   //----------------------------------------------------------------------------
 
   logic [1:0]                           i_hresp;
-  logic [2:0]                           i_size;
-  logic [ADDR_WIDTH-1:0]                i_addr;
-  logic [STRB_WIDTH-1:0]                i_wstrb;
-  logic [STRB_WIDTH-1:0]                i_rstrb;
+  logic [STRB_WIDTH-1:0]                i_strb;
   logic [DATA_WIDTH-1:0]                i_wdata;
   logic [DATA_WIDTH-1:0]                i_rdata;
-  logic                                 i_write;
-  logic                                 i_nonsec;
   logic                                 i_req;
   logic                                 i_err;
   logic                                 ahb_xseq;
@@ -83,8 +78,9 @@ module ahb_lite_adapter #(
   // Indicates an AHB valid address phase to this device.
   assign ahb_valid = HSEL & HREADYIN;
 
+  assign i_req = ahb_valid & ahb_xseq;
   // There is an error from RIF
-  assign i_err = (rif_rd_req | rif_wr_req) & !rif_addr_valid;
+  assign i_err = i_req & !rif_addr_valid;
 
   assign HRESP = i_hresp[1];
 
@@ -92,59 +88,43 @@ module ahb_lite_adapter #(
   // Byte lanes logic
   //----------------------------------------------------------------------------
 
-  // Internal WSTRB logic
+  // Internal STRB logic
   always_comb begin : comb_wstrb
     // Note that HSIZE will not greater than DATA_WIDTH.
-    i_wstrb = '0;
-    case (i_size)
-      3'b000: i_wstrb = STRB_MAP[0][STRB_WIDTH-1:0]; // Byte
-      3'b001: i_wstrb = STRB_MAP[1][STRB_WIDTH-1:0]; // Halfword
-      3'b010: i_wstrb = STRB_MAP[2][STRB_WIDTH-1:0]; // Word
-      3'b011: i_wstrb = STRB_MAP[3][STRB_WIDTH-1:0]; // Doubleworld
-      3'b100: i_wstrb = STRB_MAP[4][STRB_WIDTH-1:0]; // 4-word line
-      3'b101: i_wstrb = STRB_MAP[5][STRB_WIDTH-1:0]; // 8-word line
-      3'b110: i_wstrb = STRB_MAP[6][STRB_WIDTH-1:0]; // 512-bits width
-      3'b111: i_wstrb = STRB_MAP[7][STRB_WIDTH-1:0]; // 1024-bits width
+    i_strb = '0;
+    case (HSIZE)
+      3'b000: i_strb = STRB_MAP[0][STRB_WIDTH-1:0]; // Byte
+      3'b001: i_strb = STRB_MAP[1][STRB_WIDTH-1:0]; // Halfword
+      3'b010: i_strb = STRB_MAP[2][STRB_WIDTH-1:0]; // Word
+      3'b011: i_strb = STRB_MAP[3][STRB_WIDTH-1:0]; // Doubleworld
+      3'b100: i_strb = STRB_MAP[4][STRB_WIDTH-1:0]; // 4-word line
+      3'b101: i_strb = STRB_MAP[5][STRB_WIDTH-1:0]; // 8-word line
+      3'b110: i_strb = STRB_MAP[6][STRB_WIDTH-1:0]; // 512-bits width
+      3'b111: i_strb = STRB_MAP[7][STRB_WIDTH-1:0]; // 1024-bits width
     endcase
   end : comb_wstrb
-
-  // Internal RSTRB logic
-  always_comb begin : comb_strb
-    // Note that HSIZE will not greater than DATA_WIDTH.
-    i_rstrb = '0;
-    case (HSIZE)
-      3'b000: i_rstrb = STRB_MAP[0][STRB_WIDTH-1:0]; // Byte
-      3'b001: i_rstrb = STRB_MAP[1][STRB_WIDTH-1:0]; // Halfword
-      3'b010: i_rstrb = STRB_MAP[2][STRB_WIDTH-1:0]; // Word
-      3'b011: i_rstrb = STRB_MAP[3][STRB_WIDTH-1:0]; // Doubleworld
-      3'b100: i_rstrb = STRB_MAP[4][STRB_WIDTH-1:0]; // 4-word line
-      3'b101: i_rstrb = STRB_MAP[5][STRB_WIDTH-1:0]; // 8-word line
-      3'b110: i_rstrb = STRB_MAP[6][STRB_WIDTH-1:0]; // 512-bits width
-      3'b111: i_rstrb = STRB_MAP[7][STRB_WIDTH-1:0]; // 1024-bits width
-    endcase
-  end : comb_strb
 
   // i_wdata mask
   if (SEC_TRANS) begin : g_sec_wdata
     for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_wdata
-      assign i_wdata[i+:8] = (i_wstrb[i/8] & ~i_nonsec) ? HWDATA[i+:8] : '0;
+      assign i_wdata[i+:8] = (i_strb[i/8] & ~HNONSEC) ? HWDATA[i+:8] : '0;
     end : g_i_wdata;
   end : g_sec_wdata
   else begin : g_non_sec_wdata
     for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_wdata
-      assign i_wdata[i+:8] = i_wstrb[i/8] ? HWDATA[i+:8] : '0;
+      assign i_wdata[i+:8] = i_strb[i/8] ? HWDATA[i+:8] : '0;
     end : g_i_wdata;
   end : g_non_sec_wdata
 
   // i_rdata mask
   if (SEC_TRANS) begin : g_sec_rdata
     for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_rdata
-      assign i_rdata[i+:8] = (i_rstrb[i/8] & ~i_nonsec) ? rif_rdata[i+:8] : '0;
+      assign i_rdata[i+:8] = (i_strb[i/8] & ~HNONSEC) ? rif_rdata[i+:8] : '0;
     end : g_i_rdata;
   end : g_sec_rdata
   else begin : g_non_sec_rdata
     for (genvar i = 0; i < DATA_WIDTH; i += 8) begin : g_i_rdata
-      assign i_rdata[i+:8] = i_rstrb[i/8] ? rif_rdata[i+:8] : '0;
+      assign i_rdata[i+:8] = i_strb[i/8] ? rif_rdata[i+:8] : '0;
     end : g_i_rdata;
   end : g_non_sec_rdata
 
@@ -153,10 +133,10 @@ module ahb_lite_adapter #(
   //----------------------------------------------------------------------------
   // RIF signals connections
   //----------------------------------------------------------------------------
-  assign rif_addr   = (HWRITE) ? i_addr : HADDR;
-  assign rif_wr_req = i_req &  i_write;
-  assign rif_rd_req = ahb_valid & ahb_xseq & ~HWRITE;
-  assign rif_wstrb  = i_wstrb;
+  assign rif_addr   = HADDR;
+  assign rif_wr_req = i_req & HWRITE;
+  assign rif_rd_req = i_req & ~HWRITE;
+  assign rif_wstrb  = i_strb;
   assign rif_wdata  = i_wdata;
 
   //----------------------------------------------------------------------------
@@ -172,46 +152,6 @@ module ahb_lite_adapter #(
       HRDATA <= i_rdata;
     end
   end : ff_hrdata
-
-  // Latch HADDR and HSIZE
-  always_ff @(posedge HCLK or negedge HRESETn) begin : ff_addr_size
-    if (!HRESETn) begin
-      i_addr  <= '0;
-      i_size  <= '0;
-      i_nonsec <= '0;
-    end
-    else if (ahb_valid && ahb_xseq) begin
-      i_addr  <= HADDR;
-      i_size  <= HSIZE;
-      i_nonsec <= HNONSEC;
-    end
-  end : ff_addr_size
-
-  // Latch HWRITE
-  always_ff @(posedge HCLK or negedge HRESETn) begin : ff_wr
-    if (!HRESETn) begin
-      i_write <= 1'b0;
-    end
-    else if (ahb_valid && ahb_xseq) begin
-      i_write <= HWRITE;
-    end
-    else if (!HSEL && i_write) begin
-      i_write <= 1'b0;
-    end
-  end : ff_wr
-
-  // Generate internal req
-  always_ff @(posedge HCLK or negedge HRESETn) begin : ff_req
-    if (!HRESETn) begin
-      i_req <= 1'b0;
-    end
-    else if (ahb_valid && (i_req ^ ahb_xseq)) begin
-      i_req <= ahb_xseq;
-    end
-    else if (!HSEL && i_req) begin
-      i_req <= 1'b0;
-    end
-  end : ff_req
 
   //----------------------------------------------------------------------------
   // Device HREADYOUT and HRESP
