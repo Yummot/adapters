@@ -266,7 +266,7 @@ module axi4_lite_adapter #(
   //----------------------------------------------------------------------------
 
   assign awready = w_fifo_wvalid;
-  assign wready = w_fifo_wready;
+  assign wready = w_fifo_wvalid;
   assign w_fifo_rready = rif_wr_req;
   assign w_fifo_wvalid = awvalid & wvalid & w_fifo_wready;
 
