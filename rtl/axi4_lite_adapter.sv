@@ -16,6 +16,9 @@ module axi4_lite_adapter #(
   // Whether the AXI-Lite W channel should be decoupled with a register. This
   // can help break long paths at the expense of registers.
   parameter bit                         DECOUPLE_W = 1,
+  // Whether the AXI-Lite AR channel should be decoupled with a register. This
+  // can help break long paths at the expense of registers.
+  parameter bit                         DECOUPLE_R = 1,
   parameter integer                     AXI_BYTE_COUNT = AXI_DATA_WIDTH / 8
 ) (
   input  logic                          aclk,
@@ -306,7 +309,6 @@ module axi4_lite_adapter #(
   assign b_fifo_wvalid = rif_wr_req;
 
   sync_fifo #(
-    .FALL_THROUGH   (~DECOUPLE_W),
     .DATA_WIDTH     (B_DATA_WIDTH),
     .DEPTH          (BUFFER_DEPTH)
   ) u_b_fifo(
@@ -339,6 +341,7 @@ module axi4_lite_adapter #(
   assign ar_fifo_wvalid = arvalid & arready;
 
   sync_fifo #(
+    .FALL_THROUGH   (~DECOUPLE_R),
     .DATA_WIDTH     (AR_DATA_WIDTH),
     .DEPTH          (BUFFER_DEPTH)
   ) u_ar_fifo(
