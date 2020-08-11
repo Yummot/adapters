@@ -277,7 +277,7 @@ module axi4_lite_adapter #(
     .FALL_THROUGH   (~DECOUPLE_W),
     .DATA_WIDTH     (W_DATA_WIDTH),
     .DEPTH          (BUFFER_DEPTH)
-  ) u_w_fifo(
+  ) u_w_fifo (
     .clk            (aclk),
     .reset          (reset),
 
@@ -311,7 +311,7 @@ module axi4_lite_adapter #(
   sync_fifo #(
     .DATA_WIDTH     (B_DATA_WIDTH),
     .DEPTH          (BUFFER_DEPTH)
-  ) u_b_fifo(
+  ) u_b_fifo (
     .clk            (aclk),
     .reset          (reset),
 
@@ -344,7 +344,7 @@ module axi4_lite_adapter #(
     .FALL_THROUGH   (~DECOUPLE_R),
     .DATA_WIDTH     (AR_DATA_WIDTH),
     .DEPTH          (BUFFER_DEPTH)
-  ) u_ar_fifo(
+  ) u_ar_fifo (
     .clk            (aclk),
     .reset          (reset),
 
@@ -379,7 +379,7 @@ module axi4_lite_adapter #(
   sync_fifo #(
     .DATA_WIDTH     (R_DATA_WIDTH),
     .DEPTH          (BUFFER_DEPTH)
-  ) u_r_fifo(
+  ) u_r_fifo (
     .clk            (aclk),
     .reset          (reset),
 
