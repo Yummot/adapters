@@ -13,6 +13,11 @@ files = [
     "./rtl/axi4_lite_adapter.sv"
 ]
 
+[filesets.dv]
+files = [
+    "./dv/axi_addr_dv.sv"
+]
+
 [dependencies.common_cells]
 path =  "/home/motyu/ic_projs/common_cells"
 version = "0.1.3"
@@ -21,3 +26,8 @@ version = "0.1.3"
 default_tool = "ies"
 toplevel = "ahb_lite_adapter"
 filesets = ["rtl"]
+
+[targets.sim]
+default_tool = "questa"
+toplevel = "axi_addr_tb"
+filesets = ["rtl", "dv"]

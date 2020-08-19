@@ -1,4 +1,4 @@
 # TODO
 
-- [ ] Latch rif_rdata before output
-- [ ] Write data FSM?
+- [x] **DONE** Latch rif_rdata before output
+- [x] **WONT DO** Write data FSM?
