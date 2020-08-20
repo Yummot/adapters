@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 // Module: axi_addr
 //
 module axi_addr #(
@@ -69,6 +71,9 @@ module axi_addr #(
       // For WRAPPING BURST the address must be aligned,
       // so we don't need to do realignment.
       next_addr = (addr & ~wrap_mask) | (next_addr & wrap_mask);
+    end
+    else begin
+      next_addr = next_addr;
     end
   end : comb_next_addr
 

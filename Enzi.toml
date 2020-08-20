@@ -2,7 +2,7 @@ enzi_version = "0.3"
 
 [package]
 name = "adapters"
-version = "0.2.4"
+version = "0.2.5"
 authors = [ "Mot Yu",]
 
 [filesets.rtl]
@@ -10,12 +10,14 @@ files = [
     "./rtl/ahb_lite_adapter.sv",
     "./rtl/apb_adapter.sv",
     "./rtl/axi4_lite_adapter_old.sv",
-    "./rtl/axi4_lite_adapter.sv"
+    "./rtl/axi4_lite_adapter.sv",
+    "./rtl/axi_addr.sv",
+    "./rtl/axi4_adapter.sv",
 ]
 
 [filesets.dv]
 files = [
-    "./dv/axi_addr_dv.sv"
+    "./dv/axi_addr_tb.sv"
 ]
 
 [dependencies.common_cells]
