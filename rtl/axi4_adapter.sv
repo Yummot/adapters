@@ -125,7 +125,6 @@ module axi4_adapter #(
 
   // registered AW* from the AW BUFFER output aw_buffer
   logic [AXI_ID_WIDTH-1:0]      awid_q;
-  logic [AXI_ADDR_WIDTH-1:0]    awaddr_q;
   logic [7:0]                   awlen_q;
   logic [2:0]                   awsize_q;
   logic [1:0]                   awburst_q;
@@ -194,6 +193,7 @@ module axi4_adapter #(
   logic                         aw_buf_rvalid;
 
   logic                         aw_buf_rready_d;
+  logic                         i_aw_buf_rready;
 
   assign reset = ~aresetn;
 
@@ -247,8 +247,14 @@ module axi4_adapter #(
   // aw buffer pop logic
   //----------------------------------------------------------------------------
 
+  always_comb begin : comb_aw_buf_rready
+    aw_buf_rready = i_aw_buf_rready;
+    if (wvalid && wready && wlast && (!bvalid || bready))
+      aw_buf_rready = 1'b1;
+  end : comb_aw_buf_rready
+
   always_comb begin : c_aw_buf_rready_d
-    aw_buf_rready_d = aw_buf_rready;
+    aw_buf_rready_d = i_aw_buf_rready;
     if (aw_buf_rready && aw_buf_rvalid) begin
       aw_buf_rready_d = 1'b0;
     end
@@ -265,14 +271,14 @@ module axi4_adapter #(
     end
   end : c_aw_buf_rready_d
 
-  always_ff @(posedge aclk or negedge aresetn) begin : ff_aw_buf_rready
+  always_ff @(posedge aclk or negedge aresetn) begin : ff_i_aw_buf_rready
     if (!aresetn) begin
-      aw_buf_rready <= 1'b1;
+      i_aw_buf_rready <= 1'b1;
     end
-    else if (aw_buf_rready_d ^ aw_buf_rready) begin
-      aw_buf_rready <= aw_buf_rready_d;
+    else if (aw_buf_rready_d ^ i_aw_buf_rready) begin
+      i_aw_buf_rready <= aw_buf_rready_d;
     end
-  end : ff_aw_buf_rready
+  end : ff_i_aw_buf_rready
 
   //----------------------------------------------------------------------------
   // write channel control
@@ -301,26 +307,24 @@ module axi4_adapter #(
   if (EN_SEC_MODE) begin : g_ff_sec_aw
     always_ff @(posedge aclk or negedge aresetn) begin : ff_aw
       if (!aresetn) begin
-        awaddr_q  <= '0;
         awlen_q   <= '0;
         awsize_q  <= '0;
         awburst_q <= '0;
       end
       else if (aw_buf_rready) begin
-        {awaddr_q, awlen_q, awsize_q, awburst_q, aw_sec} <= aw_buf_rdata[AW_DW-1:AXI_ID_WIDTH];
+        {awlen_q, awsize_q, awburst_q, aw_sec} <= aw_buf_rdata[AW_DW-AXI_ADDR_WIDTH-1:AXI_ID_WIDTH];
       end
     end : ff_aw
   end
   else begin : g_ff_aw
     always_ff @(posedge aclk or negedge aresetn) begin : ff_aw
       if (!aresetn) begin
-        awaddr_q  <= '0;
         awlen_q   <= '0;
         awsize_q  <= '0;
         awburst_q <= '0;
       end
       else if (aw_buf_rready) begin
-        {awaddr_q, awlen_q, awsize_q, awburst_q} <= aw_buf_rdata[AW_DW-1:AXI_ID_WIDTH];
+        {awlen_q, awsize_q, awburst_q} <= aw_buf_rdata[AW_DW-AXI_ADDR_WIDTH-1:AXI_ID_WIDTH];
       end
     end : ff_aw
   end : g_ff_aw
@@ -332,7 +336,7 @@ module axi4_adapter #(
   always_comb begin : comb_waddr
     next_waddr = waddr;
     if (aw_buf_rready) begin
-      next_waddr = awaddr_q;
+      next_waddr = aw_buf_rdata[AW_DW-1:AW_DW-AXI_ADDR_WIDTH];
     end
     else if (wvalid) begin
       next_waddr = next_wr_addr;
@@ -453,7 +457,7 @@ module axi4_adapter #(
     end
     // ((!rvalid || rready) && (!arready && rvalid))
     else if (rready && rvalid && !arready) begin
-      arready <= (arlen <= 2);
+      arready <= (r_cnt <= 2);
     end
   end : ff_aready
 
@@ -612,7 +616,7 @@ module axi4_adapter #(
     rlast_d = rlast;
     if (!rvalid || rready) begin
       if (arvalid && arready) begin
-        rlast_d = (r_cnt == 0);
+        rlast_d = (arlen == 0);
       end
       else if (rvalid) begin
         rlast_d = (r_cnt == 2);
@@ -637,7 +641,7 @@ module axi4_adapter #(
   //----------------------------------------------------------------------------
 
   always_comb begin : comb_rd_req
-    rd_req = arvalid | !arready;
+    rd_req = arvalid | ~arready;
     if (rvalid && !rready) begin
       rd_req = 1'b0;
     end
