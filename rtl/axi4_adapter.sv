@@ -150,6 +150,7 @@ module axi4_adapter #(
   logic [7:0]                   arlen_q;
   logic [2:0]                   arsize_q;
   logic [1:0]                   arburst_q;
+  logic                         arport_0_q;
   logic                         ar_sec;
 
   // WR burst addr
@@ -385,7 +386,7 @@ module axi4_adapter #(
     if (!aresetn) begin
       wr_err <= 1'b0;
     end
-    else if (rif_wr_req) begin
+    else if (wvalid & wready) begin
       wr_err <= wr_err | rif_w_err;
     end
     else if (bready) begin
@@ -522,16 +523,16 @@ module axi4_adapter #(
 
   always_ff @(posedge aclk or negedge aresetn) begin : ff_ar
     if (!aresetn) begin
-      arburst_q <= '0;
-      arsize_q  <= '0;
-      arlen_q   <= '0;
-      ar_sec    <= '0;
+      arburst_q   <= '0;
+      arsize_q    <= '0;
+      arlen_q     <= '0;
+      arport_0_q  <= '0;
     end
     else if (arready) begin
-      arburst_q <= arburst;
-      arsize_q  <= arsize;
-      arlen_q   <= arlen;
-      ar_sec    <= arprot[1];
+      arburst_q   <= arburst;
+      arsize_q    <= arsize;
+      arlen_q     <= arlen;
+      arport_0_q  <= arprot[1];
     end
   end : ff_ar
 
@@ -647,10 +648,11 @@ module axi4_adapter #(
     end
   end : comb_rd_req
 
+  assign ar_sec = arready ? arprot[1] : arport_0_q;
   assign rif_raddr = arready ? araddr : raddr;
   assign rif_rd_req = (~EN_SEC_MODE | ar_sec) & rd_req;
-  assign rdata_d = (EN_SEC_MODE) ? (aw_sec ? rif_rdata : '0) : rif_rdata;
-  assign rif_r_err = (EN_SEC_MODE && !NO_SEC_FAIL) ? (~aw_sec | ~rif_rvalid) : ~rif_rvalid;
+  assign rdata_d = (EN_SEC_MODE) ? (ar_sec ? rif_rdata : '0) : rif_rdata;
+  assign rif_r_err = (EN_SEC_MODE && !NO_SEC_FAIL) ? (~ar_sec | ~rif_rvalid) : ~rif_rvalid;
   assign rresp_0 = 1'b0;
   assign rresp = {rd_err, rresp_0};
 
