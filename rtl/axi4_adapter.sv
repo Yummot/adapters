@@ -373,7 +373,13 @@ module axi4_adapter #(
   assign rif_waddr  = waddr;
   assign rif_wdata  = wdata;
   assign rif_wstrb  = wstrb;
-  assign rif_w_err  = (EN_SEC_MODE && !NO_SEC_FAIL) ? (~aw_sec | ~rif_wvalid) : ~rif_wvalid;
+
+  if (NO_SEC_FAIL) begin : g_w_err
+    assign rif_w_err = (EN_SEC_MODE) ? (aw_sec & ~rif_wvalid) : ~rif_wvalid;
+  end : g_w_err
+  else begin : g_sec_w_err
+    assign rif_w_err  = EN_SEC_MODE ? (~aw_sec | ~rif_wvalid) : ~rif_wvalid;
+  end : g_sec_w_err
 
   //----------------------------------------------------------------------------
   // BRESP[1]
@@ -652,9 +658,15 @@ module axi4_adapter #(
   assign rif_raddr = arready ? araddr : raddr;
   assign rif_rd_req = (~EN_SEC_MODE | ar_sec) & rd_req;
   assign rdata_d = (EN_SEC_MODE) ? (ar_sec ? rif_rdata : '0) : rif_rdata;
-  assign rif_r_err = (EN_SEC_MODE && !NO_SEC_FAIL) ? (~ar_sec | ~rif_rvalid) : ~rif_rvalid;
   assign rresp_0 = 1'b0;
   assign rresp = {rd_err, rresp_0};
+
+  if (NO_SEC_FAIL) begin : g_r_err
+    assign rif_r_err = (EN_SEC_MODE) ? (ar_sec & ~rif_rvalid) : ~rif_rvalid;
+  end : g_r_err
+  else begin : g_sec_r_err
+    assign rif_r_err = (EN_SEC_MODE) ? (~ar_sec | ~rif_rvalid) : ~rif_rvalid;
+  end : g_sec_r_err
 
   always_ff @(posedge aclk or negedge aresetn) begin : ff_rd_err
     if (!aresetn) begin
