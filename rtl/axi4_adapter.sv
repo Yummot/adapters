@@ -1,7 +1,12 @@
+// Module: axi4_adapter
+// Description:
+//  **IMPORTANT**:
+//    This adapter only support narrow on WRITE channel, **Not** on read channel.
+//    This adapter only support realgined the started address with ALIGN_ADDR=1'b1
+//    on WRITE channel, **Not** on read channel.
+
 `timescale 1ns/1ps
 
-//  Module: axi4_adapter
-//
 module axi4_adapter #(
   parameter integer                     AXI_ID_WIDTH = 1,
   parameter integer                     AXI_ADDR_WIDTH = 12,
@@ -106,10 +111,12 @@ module axi4_adapter #(
   // localparams
   //----------------------------------------------------------------------------
 
-// only used AWID, AWADDR, AWLEN, AWSIZE, AWBURST, AWPROT[1] (SECURE BIT)
+  // only used AWID, AWADDR, AWLEN, AWSIZE, AWBURST, AWPROT[1] (SECURE BIT)
   localparam AW_DW = AXI_ID_WIDTH + AXI_ADDR_WIDTH + 13 + integer'(EN_SEC_MODE);
   // only used ARID, ARADDR, ARLEN, ARSIZE, ARBURST, ARPROT[1] (SECURE BIT)
   // localparam AR_DW = AXI_ID_WIDTH + AXI_ADDR_WIDTH + 13 + integer'(EN_SEC_MODE);
+
+  localparam DSIZE = $clog2(AXI_DATA_WIDTH) - 3;
 
   // If the AXI_DATA_WIDTH of an axi4_adapter instance doesn't meet the condition,
   // it will fail at optimization/elaboration.
@@ -370,7 +377,9 @@ module axi4_adapter #(
   //----------------------------------------------------------------------------
 
   assign rif_wr_req = (~EN_SEC_MODE | aw_sec) & wvalid & wready;
-  assign rif_waddr  = waddr;
+  // REALIGNMENT FOR AWSIZE < DSIZE, using WSTRB for properly writing data.
+  assign rif_waddr  = (DSIZE > 0) ?
+    {waddr[AXI_ADDR_WIDTH-1:DSIZE], {(DSIZE){1'b0}}} : waddr;
   assign rif_wdata  = wdata;
   assign rif_wstrb  = wstrb;
 
