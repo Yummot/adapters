@@ -1,9 +1,10 @@
 // Module: axi4_adapter
 // Description:
 //  **IMPORTANT**:
-//    This adapter only support narrow on WRITE channel, **Not** on read channel.
+//    This adapter only support narrow on WRITE channel, the same feature is
+//    experimental on read channel.
 //    This adapter only support realgined the started address with ALIGN_ADDR=1'b1
-//    on WRITE channel, **Not** on read channel.
+//    on WRITE channel, the same feature is experimental on read channel.
 
 `timescale 1ns/1ps
 
@@ -175,6 +176,9 @@ module axi4_adapter #(
   logic [AXI_DATA_WIDTH-1:0]    rdata_d;
   logic                         rlast_d;
   logic                         rd_req;
+
+  // unalignment (WORD ALIGNMENT) rif_raddr
+  logic [AXI_ADDR_WIDTH-1:0]    i_rif_raddr;
 
   // RD burst counter
   logic                         load_r_cnt;
@@ -663,8 +667,14 @@ module axi4_adapter #(
     end
   end : comb_rd_req
 
+
+  assign i_rif_raddr = arready ? araddr : raddr;
+  // WORD-ALIGNMENT rif_raddr
+  // TODO: MASKED UNUSED BYTES LANES IN READ BURST BEATS
+  assign rif_raddr = (DSIZE > 0) ?
+  {i_rif_raddr[AXI_ADDR_WIDTH-1:DSIZE], {(DSIZE){1'b0}}} : i_rif_raddr;
+
   assign ar_sec = arready ? arprot[1] : arport_0_q;
-  assign rif_raddr = arready ? araddr : raddr;
   assign rif_rd_req = (~EN_SEC_MODE | ar_sec) & rd_req;
   assign rdata_d = (EN_SEC_MODE) ? (ar_sec ? rif_rdata : '0) : rif_rdata;
   assign rresp_0 = 1'b0;
