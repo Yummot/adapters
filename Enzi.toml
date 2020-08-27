@@ -9,7 +9,7 @@ authors = [ "Mot Yu",]
 files = [
     "./rtl/ahb_lite_adapter.sv",
     "./rtl/apb_adapter.sv",
-    "./rtl/axi4_lite_adapter_old.sv",
+    "./rtl/deprecated/axi4_lite_adapter_old.sv",
     "./rtl/axi4_lite_adapter.sv",
     "./rtl/axi_addr.sv",
     "./rtl/axi4_adapter.sv",
