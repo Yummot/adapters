@@ -499,7 +499,7 @@ module axi4_adapter #(
   // TODO: refine update
   assign load_r_cnt = arvalid & arready;
   assign en_r_cnt_4_0 = load_r_cnt | (rready & rvalid);
-  assign en_r_cnt_8_5 = en_r_cnt_4_0 & (&r_cnt_4_0);
+  assign en_r_cnt_8_5 = en_r_cnt_4_0 & ~(|r_cnt_4_0);
 
   always_ff @(posedge aclk or negedge aresetn) begin : ff_r_cnt_4_0
     if (!aresetn) begin
