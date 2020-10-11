@@ -57,6 +57,7 @@ module axi_addr #(
   assign wrap_mask = {{(ADDR_WIDTH-4){1'b0}}, len[3:0]} << size;
 
   always_comb begin : comb_next_addr
+    align_mask = '0;
     next_addr = (i_burst == FIXED) ? addr : addr + n_bytes;
     unique if (i_burst == INCR) begin
       // For INCR BURST, do realignment if there is not interconnect,
